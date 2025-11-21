@@ -1,0 +1,522 @@
+package project;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+class Passenger {
+    String name, phone, dob, gender;
+    int seatNo;
+    int ticketID;
+    double farePaid;
+    String busNo;
+
+    Passenger() {}
+    Passenger(String name, String phone, String dob, String gender, int seatNo, int ticketID, double farePaid, String busNo) {
+        this.name = name;
+        this.phone = phone;
+        this.dob = dob; 
+        this.gender = gender;
+        this.seatNo = seatNo;
+        this.ticketID = ticketID;
+        this.farePaid = farePaid;
+        this.busNo = busNo;
+    }
+}
+
+class Bus {
+    String busNo, busName, busType, source, destination;
+    double fare;
+    String startTime, reachTime;
+    boolean[] seats;
+    ArrayList<Passenger> passengers = new ArrayList<>();
+
+    Bus() {
+        this.seats = new boolean[40];
+        Arrays.fill(this.seats, false);
+    }
+
+    Bus(String busNo, String busName, String busType, String source, String destination,
+        double fare, String startTime, String reachTime, int seatCount) {
+        this.busNo = busNo; 
+        this.busName = busName; 
+        this.busType = busType;
+        this.source = source;   
+        this.destination = destination; 
+        this.fare = fare;
+        this.startTime = startTime;  
+        this.reachTime = reachTime;
+        this.seats = new boolean[seatCount];
+        Arrays.fill(this.seats, false);
+    }
+
+    int totalSeats() { return seats.length; }
+}
+
+public class BusTicketSystem {
+
+    static Scanner sc = new Scanner(System.in, StandardCharsets.UTF_8);
+    static ArrayList<Bus> buses = new ArrayList<>();
+    static int ticketCounter = 1000;
+    static final String BUSES_FILE = "buses.txt";
+    static final String TICKETS_FILE = "tickets.txt";
+
+    static {
+        loadBusesFromFile();
+        loadTicketsFromFile();
+    }
+
+    static void showSeatMap(Bus b) {
+        System.out.println("\nSeat Availability (E = Empty, X = Booked):");
+        int cols = 4;
+        for (int i = 0; i < b.totalSeats(); i++) {
+            String s = b.seats[i] ? " X " : String.format("%2d ", i + 1);
+            System.out.print("[" + s + "]");
+            if ((i + 1) % cols == 0) System.out.println();
+            else System.out.print(" ");
+        }
+        System.out.println();
+    }
+
+    static void pauseForEnter() {
+        System.out.println("\nPress Enter to continue...");
+        sc.nextLine();
+    }
+
+    static void saveBusesToFile() {
+        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(BUSES_FILE), StandardCharsets.UTF_8))) {
+            for (Bus b : buses) {
+                int seatCount = b.totalSeats();
+                String line = String.join("|",
+                        escape(b.busNo), escape(b.busName), escape(b.busType),
+                        escape(b.source), escape(b.destination),
+                        Double.toString(b.fare), escape(b.startTime), escape(b.reachTime),
+                        Integer.toString(seatCount)
+                );
+                bw.write(line);
+                bw.newLine();
+            }
+        } catch (IOException e) {
+            System.out.println("Error saving buses: " + e.getMessage());
+        }
+    }
+
+    static void loadBusesFromFile() {
+        File f = new File(BUSES_FILE);
+        if (!f.exists()) return;
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] parts = splitPreserve(line, '|', 9);
+                if (parts.length >= 9) {
+                    String busNo = unescape(parts[0]);
+                    String busName = unescape(parts[1]);
+                    String busType = unescape(parts[2]);
+                    String source = unescape(parts[3]);
+                    String dest = unescape(parts[4]);
+                    double fare = Double.parseDouble(parts[5]);
+                    String start = unescape(parts[6]);
+                    String reach = unescape(parts[7]);
+                    int seatCount = Integer.parseInt(parts[8]);
+                    Bus b = new Bus(busNo, busName, busType, source, dest, fare, start, reach, seatCount);
+                    buses.add(b);
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error loading buses: " + e.getMessage());
+        }
+    }
+
+    // Format per line: busNo|ticketID|name|phone|dob|gender|seatNo|farePaid
+    static void saveTicketsToFile() {
+        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(TICKETS_FILE), StandardCharsets.UTF_8))) {
+            for (Bus b : buses) {
+                for (Passenger p : b.passengers) {
+                    String line = String.join("|",
+                            escape(b.busNo),
+                            Integer.toString(p.ticketID),
+                            escape(p.name),
+                            escape(p.phone),
+                            escape(p.dob),
+                            escape(p.gender),
+                            Integer.toString(p.seatNo),
+                            Double.toString(p.farePaid)
+                    );
+                    bw.write(line);
+                    bw.newLine();
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error saving tickets: " + e.getMessage());
+        }
+    }
+
+    static void loadTicketsFromFile() {
+        File f = new File(TICKETS_FILE);
+        if (!f.exists()) return;
+
+        int maxTicket = ticketCounter;
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] parts = splitPreserve(line, '|', 8);
+                if (parts.length >= 8) {
+                    String busNo = unescape(parts[0]);
+                    int ticketID = Integer.parseInt(parts[1]);
+                    String name = unescape(parts[2]);
+                    String phone = unescape(parts[3]);
+                    String dob = unescape(parts[4]);
+                    String gender = unescape(parts[5]);
+                    int seatNo = Integer.parseInt(parts[6]);
+                    double farePaid = Double.parseDouble(parts[7]);
+
+                    Bus target = findBusByNo(busNo);
+                    if (target != null) {
+                        Passenger p = new Passenger(name, phone, dob, gender, seatNo, ticketID, farePaid, busNo);
+                        target.passengers.add(p);
+                        if (seatNo >= 1 && seatNo <= target.totalSeats()) target.seats[seatNo - 1] = true;
+                    }
+                    if (ticketID > maxTicket) maxTicket = ticketID;
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Error loading tickets: " + e.getMessage());
+        }
+        ticketCounter = Math.max(ticketCounter, maxTicket);
+    }
+
+    static String escape(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("|", "\\|");
+    }
+    static String unescape(String s) {
+        if (s == null) return "";
+        return s.replace("\\|", "|").replace("\\\\", "\\");
+    }
+
+    static String[] splitPreserve(String input, char sep, int expectedParts) {
+        ArrayList<String> parts = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean esc = false;
+        for (int i = 0; i < input.length(); i++) {
+            char ch = input.charAt(i);
+            if (esc) {
+                cur.append(ch);
+                esc = false;
+            } else {
+                if (ch == '\\') esc = true;
+                else if (ch == sep) {
+                    parts.add(cur.toString());
+                    cur.setLength(0);
+                } else cur.append(ch);
+            }
+        }
+        parts.add(cur.toString());
+        // pad if needed
+        while (parts.size() < expectedParts) parts.add("");
+        return parts.toArray(new String[0]);
+    }
+
+    static Bus findBusByNo(String busNo) {
+        for (Bus b : buses) if (b.busNo.equalsIgnoreCase(busNo)) return b;
+        return null;
+    }
+
+  
+    static boolean adminLogin() {
+        System.out.print("Enter Admin Username: ");
+        String user = sc.nextLine().trim();
+        System.out.print("Enter Password: ");
+        String pass = sc.nextLine().trim();
+        if (user.equals("manoj") && pass.equals("1234")) return true;
+        System.out.println("Invalid Admin Credentials!");
+        return false;
+    }
+
+
+    static void addBus() {
+        if (!adminLogin()) return;
+        System.out.print("Enter Bus Number (Unique): ");
+        String busNo = sc.nextLine().trim();
+        if (findBusByNo(busNo) != null) {
+            System.out.println("Bus number already exists.");
+            return;
+        }
+        System.out.print("Enter Bus Name: ");
+        String busName = sc.nextLine().trim();
+        System.out.print("Enter Bus Type (AC/Non-AC): ");
+        String busType = sc.nextLine().trim();
+        System.out.print("Enter Source: ");
+        String source = sc.nextLine().trim();
+        System.out.print("Enter Destination: ");
+        String destination = sc.nextLine().trim();
+        System.out.print("Enter Fare: ");
+        double fare = readDoubleSafe();
+        System.out.print("Enter Start Time: ");
+        String startTime = sc.nextLine().trim();
+        System.out.print("Enter Reach Time: ");
+        String reachTime = sc.nextLine().trim();
+        System.out.print("Enter Total Seats (default 40): ");
+        String seatsStr = sc.nextLine().trim();
+        int seatCount = 40;
+        if (!seatsStr.isEmpty()) {
+            try { seatCount = Integer.parseInt(seatsStr); } catch (NumberFormatException e) { seatCount = 40; }
+        }
+        Bus b = new Bus(busNo, busName, busType, source, destination, fare, startTime, reachTime, seatCount);
+        buses.add(b);
+        saveBusesToFile();
+        System.out.println("Bus added successfully.");
+    }
+
+    static void showBusesFiltered(String src, String dst) {
+        System.out.print("Filter by Bus Type? (AC/Non-AC/All): ");
+        String typeFilter = sc.nextLine().trim();
+        if (typeFilter.isEmpty()) typeFilter = "All";
+
+        System.out.print("Sort by fare? (1 = Low->High, 2 = High->Low, Any other = No sort): ");
+        String sortChoice = sc.nextLine().trim();
+
+        ArrayList<Bus> matched = new ArrayList<>();
+        for (Bus b : buses) {
+            if (b.source.equalsIgnoreCase(src) && b.destination.equalsIgnoreCase(dst)) {
+                if (typeFilter.equalsIgnoreCase("All") || b.busType.equalsIgnoreCase(typeFilter)) {
+                    matched.add(b);
+                }
+            }
+        }
+
+        if (matched.isEmpty()) {
+            System.out.println("No buses found for these criteria.");
+            return;
+        }
+
+        if (sortChoice.equals("1")) {
+            matched.sort(Comparator.comparingDouble(x -> x.fare));
+        } else if (sortChoice.equals("2")) {
+            matched.sort((a, c) -> Double.compare(c.fare, a.fare));
+        }
+
+        System.out.println("\nAvailable Buses:");
+        for (Bus b : matched) {
+            System.out.printf("%s | %s | %s | Fare: %.2f | Start: %s | Reach: %s | Seats: %d\n",
+                    b.busNo, b.busName, b.busType, b.fare, b.startTime, b.reachTime, b.totalSeats());
+        }
+    }
+
+    static void bookTicket() {
+        System.out.print("Enter Source: ");
+        String src = sc.nextLine().trim();
+        System.out.print("Enter Destination: ");
+        String dst = sc.nextLine().trim();
+
+        showBusesFiltered(src, dst);
+
+        System.out.print("Enter Bus Number to Book (or press Enter to cancel): ");
+        String busNo = sc.nextLine().trim();
+        if (busNo.isEmpty()) return;
+
+        Bus b = findBusByNo(busNo);
+        if (b == null) {
+            System.out.println("Invalid Bus Number.");
+            return;
+        }
+
+        showSeatMap(b);
+        System.out.println("1. Single Booking\n2. Family Booking (2-6)");
+        System.out.print("Enter choice: ");
+        String typ = sc.nextLine().trim();
+        int type = 1;
+        try { type = Integer.parseInt(typ); } catch (Exception e) { type = 1; }
+
+        int count = 1;
+        if (type == 2) {
+            System.out.print("Enter number of passengers (2-6): ");
+            try { count = Integer.parseInt(sc.nextLine().trim()); } catch (Exception e) { count = 1; }
+            if (count < 2 || count > 6) {
+                System.out.println("Invalid count.");
+                return;
+            }
+        }
+
+        double totalFare = 0;
+        ArrayList<Passenger> booked = new ArrayList<>();
+
+        for (int i = 0; i < count; i++) {
+            System.out.println("\nEnter Passenger " + (i + 1) + " Details:");
+            System.out.print("Name: "); String name = sc.nextLine().trim();
+            if (name.isEmpty()) { System.out.println("Name cannot be empty."); i--; continue; }
+            System.out.print("Phone: "); String phone = sc.nextLine().trim();
+            System.out.print("DOB: "); String dob = sc.nextLine().trim();
+            System.out.print("Gender: "); String gender = sc.nextLine().trim();
+
+            System.out.print("Enter Seat No (1-" + b.totalSeats() + "): ");
+            int seatNo;
+            try { seatNo = Integer.parseInt(sc.nextLine().trim()); }
+            catch (Exception e) { System.out.println("Invalid seat number."); i--; continue; }
+
+            if (seatNo < 1 || seatNo > b.totalSeats() || b.seats[seatNo - 1]) {
+                System.out.println("Seat not available!");
+                i--; continue;
+            }
+
+            b.seats[seatNo - 1] = true;
+            int ticketID = ++ticketCounter;
+            Passenger p = new Passenger(name, phone, dob, gender, seatNo, ticketID, b.fare, b.busNo);
+            b.passengers.add(p);
+            booked.add(p);
+            totalFare += b.fare;
+
+            // Print & save receipt for each passenger
+            printAndSaveReceipt(p, b);
+            System.out.println("Ticket booked: " + p.name + " | Seat " + seatNo + " | Ticket ID: " + ticketID);
+        }
+
+        saveBusesToFile();
+        saveTicketsToFile();
+
+        System.out.printf("\nTotal Fare for %d passenger(s): ₹%.2f\n", booked.size(), totalFare);
+    }
+
+    static void printAndSaveReceipt(Passenger p, Bus b) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("===== BUS TICKET RECEIPT =====\n");
+        sb.append(String.format("Ticket ID : %d\n", p.ticketID));
+        sb.append(String.format("Passenger : %s\n", p.name));
+        sb.append(String.format("Phone     : %s\n", p.phone));
+        sb.append(String.format("DOB       : %s\n", p.dob));
+        sb.append(String.format("Gender    : %s\n", p.gender));
+        sb.append(String.format("Bus No    : %s\n", b.busNo));
+        sb.append(String.format("Bus Name  : %s (%s)\n", b.busName, b.busType));
+        sb.append(String.format("Route     : %s -> %s\n", b.source, b.destination));
+        sb.append(String.format("Seat No   : %d\n", p.seatNo));
+        sb.append(String.format("Fare Paid : ₹%.2f\n", p.farePaid));
+        sb.append(String.format("Start     : %s  Reach: %s\n", b.startTime, b.reachTime));
+        sb.append("================================\n");
+
+        // Print to console
+        System.out.println("\n" + sb.toString());
+
+        // Save to file
+        String fname = "ticket_" + p.ticketID + ".txt";
+        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(fname), StandardCharsets.UTF_8))) {
+            bw.write(sb.toString());
+        } catch (IOException e) {
+            System.out.println("Error saving receipt: " + e.getMessage());
+        }
+    }
+
+    static void viewTicket() {
+        System.out.print("Enter Name: ");
+        String name = sc.nextLine().trim();
+        System.out.print("Enter Ticket ID: ");
+        int id;
+        try { id = Integer.parseInt(sc.nextLine().trim()); } catch (Exception e) { System.out.println("Invalid ID."); return; }
+
+        for (Bus b : buses) {
+            for (Passenger p : b.passengers) {
+                if (p.name.equalsIgnoreCase(name) && p.ticketID == id) {
+                    System.out.println("\nTicket Found:");
+                    System.out.println("Passenger: " + p.name);
+                    System.out.println("Ticket ID: " + p.ticketID);
+                    System.out.println("Bus: " + b.busName + " (" + b.busType + ")");
+                    System.out.println("Bus No: " + b.busNo);
+                    System.out.println("Route: " + b.source + " -> " + b.destination);
+                    System.out.println("Seat No: " + p.seatNo);
+                    System.out.println("Fare Paid: ₹" + p.farePaid);
+                    return;
+                }
+            }
+        }
+        System.out.println("Ticket not found.");
+    }
+
+    static void cancelTicket() {
+        System.out.print("Enter Name: ");
+        String name = sc.nextLine().trim();
+        System.out.print("Enter Ticket ID: ");
+        int id;
+        try { id = Integer.parseInt(sc.nextLine().trim()); } catch (Exception e) { System.out.println("Invalid ID."); return; }
+
+        for (Bus b : buses) {
+            for (int i = 0; i < b.passengers.size(); i++) {
+                Passenger p = b.passengers.get(i);
+                if (p.name.equalsIgnoreCase(name) && p.ticketID == id) {
+                    b.seats[p.seatNo - 1] = false;
+                    b.passengers.remove(i);
+                    saveBusesToFile();
+                    saveTicketsToFile();
+                    System.out.println("Ticket cancelled: " + id);
+                    return;
+                }
+            }
+        }
+        System.out.println("Ticket not found.");
+    }
+
+    static void viewSeatStatus() {
+        System.out.print("Enter Source: ");
+        String src = sc.nextLine().trim();
+        System.out.print("Enter Destination: ");
+        String dst = sc.nextLine().trim();
+
+        ArrayList<Bus> matched = new ArrayList<>();
+        for (Bus b : buses) {
+            if (b.source.equalsIgnoreCase(src) && b.destination.equalsIgnoreCase(dst)) matched.add(b);
+        }
+        if (matched.isEmpty()) { System.out.println("No buses for this route."); return; }
+
+        System.out.println("Buses for route:");
+        for (Bus b : matched) {
+            System.out.printf("%s : %s (%s) | Fare: %.2f\n", b.busNo, b.busName, b.busType, b.fare);
+        }
+        System.out.print("Enter Bus Number to view seats: ");
+        String busNo = sc.nextLine().trim();
+        Bus sel = findBusByNo(busNo);
+        if (sel == null) { System.out.println("Invalid Bus Number."); return; }
+        showSeatMap(sel);
+    }
+    static double readDoubleSafe() {
+        try {
+            String s = sc.nextLine().trim();
+            return Double.parseDouble(s);
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    public static void main(String[] args) {
+        System.out.println("=== Bus Ticket System (Enhanced) ===");
+        while (true) {
+            System.out.println("\nMenu:");
+            System.out.println("1. Add Bus (Admin)");
+            System.out.println("2. Book Ticket");
+            System.out.println("3. View Ticket (Name + Ticket ID)");
+            System.out.println("4. Cancel Ticket");
+            System.out.println("5. View Seat Status (by route)");
+            System.out.println("6. List All Buses");
+            System.out.println("7. Exit");
+            System.out.print("Enter choice: ");
+            String ch = sc.nextLine().trim();
+            switch (ch) {
+                case "1": addBus(); break;
+                case "2": bookTicket(); break;
+                case "3": viewTicket(); break;
+                case "4": cancelTicket(); break;
+                case "5": viewSeatStatus(); break;
+                case "6": listAllBuses(); break;
+                case "7": System.out.println("Exiting..."); return;
+                default: System.out.println("Invalid choice.");
+            }
+        }
+    }
+
+    static void listAllBuses() {
+        if (buses.isEmpty()) { System.out.println("No buses available."); return; }
+        System.out.println("\nAll Buses:");
+        for (Bus b : buses) {
+            System.out.printf("%s | %s | %s | %s -> %s | Fare: %.2f | Seats: %d\n",
+                    b.busNo, b.busName, b.busType, b.source, b.destination, b.fare, b.totalSeats());
+        }
+    }
+}
